@@ -1,6 +1,8 @@
 package lua
 
-import "container/list"
+import (
+	"container/list"
+)
 
 const defaultArrayCap = 0
 const defaultHashCap = 0
@@ -261,24 +263,45 @@ func (tb *LTable) ForEach(cb func(LValue, LValue)) {
 // This function is equivalent to lua_next ( http://www.lua.org/manual/5.1/manual.html#lua_next ).
 func (tb *LTable) Next(key LValue) (LValue, LValue) {
 	if key == LNil {
-		key = LNumber(1)
+		key = LNumber(0)
 	}
 
-	if k, ok := key.(LNumber); ok && isInteger(k) && k > 0 {
-		for idx := int(k) - 1; idx < len(tb.array); idx++ {
+	if k, ok := key.(LNumber); ok && isInteger(k) && k >= 0 {
+		idx := int(k)
+		for ; idx < len(tb.array); idx++ {
 			if v := tb.array[idx]; v != LNil {
 				return LNumber(idx + 1), v
 			}
 		}
-		if len(tb.dict) == 0 {
-			return LNil, LNil
+		if idx == len(tb.array) {
+			if len(tb.dict) == 0 {
+				return LNil, LNil
+			}
+			key = tb.keys.Front().Value.(LValue)
+			if v := tb.rawGetH(key); v != LNil {
+				return key, v
+			}
 		}
 	}
 
-	for e := tb.k2l[key]; e != nil; e = e.Next() {
-		k := e.Value.(LValue)
-		if v := tb.rawGetH(e.Value.(LValue)); v != LNil {
-			return k, v
+	var nextKey LValue
+	if k, ok := tb.k2l[key]; !ok {
+		//遍历过程中,key已删除
+		if el := tb.keys.Front(); el != nil {
+			nextKey = el.Value.(LValue)
+		}
+	} else {
+		if el := k.Next(); el != nil {
+			nextKey = el.Value.(LValue)
+		}
+	}
+
+	if nextKey != nil {
+		for e := tb.k2l[nextKey]; e != nil; e = e.Next() {
+			k := e.Value.(LValue)
+			if v := tb.rawGetH(k); v != LNil {
+				return k, v
+			}
 		}
 	}
 
@@ -287,8 +310,8 @@ func (tb *LTable) Next(key LValue) (LValue, LValue) {
 
 func (tb *LTable) addToHash(key, value LValue) {
 	tb.dict[key] = value
-	e := tb.keys.PushBack(value)
-	tb.k2l[value] = e
+	e := tb.keys.PushBack(key)
+	tb.k2l[key] = e
 }
 
 func (tb *LTable) removeFromHash(key LValue) {
