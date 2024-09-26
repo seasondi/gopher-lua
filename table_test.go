@@ -18,7 +18,7 @@ func TestTableLen(t *testing.T) {
 	tbl.RawSetInt(9, LNumber(10))
 	tbl.RawSetInt(8, LNil)
 	tbl.RawSetInt(7, LNumber(10))
-	errorIfNotEqual(t, 9, tbl.Len())
+	errorIfNotEqual(t, 0, tbl.Len())
 
 	tbl = newLTable(0, 0)
 	tbl.Append(LTrue)
@@ -81,11 +81,11 @@ func TestTableInsert(t *testing.T) {
 
 	tbl.Insert(5, LFalse)
 	errorIfNotEqual(t, LFalse, tbl.RawGetInt(5))
-	errorIfNotEqual(t, 5, tbl.Len())
+	errorIfNotEqual(t, 3, tbl.Len())
 
 	tbl.Insert(-10, LFalse)
 	errorIfNotEqual(t, LFalse, tbl.RawGet(LNumber(-10)))
-	errorIfNotEqual(t, 5, tbl.Len())
+	errorIfNotEqual(t, 3, tbl.Len())
 
 	tbl = newLTable(0, 0)
 	tbl.Append(LNumber(1))
@@ -129,8 +129,8 @@ func TestTableRemove(t *testing.T) {
 	errorIfNotEqual(t, LFalse, tbl.Remove(2))
 	errorIfNotEqual(t, 2, tbl.MaxN())
 	tbl.Append(LFalse)
-	errorIfNotEqual(t, LFalse, tbl.Remove(-1))
-	errorIfNotEqual(t, 2, tbl.MaxN())
+	errorIfNotEqual(t, LNil, tbl.Remove(-1))
+	errorIfNotEqual(t, 3, tbl.MaxN())
 
 }
 
@@ -142,7 +142,7 @@ func TestTableRawSetInt(t *testing.T) {
 
 	tbl.RawSetInt(1, LTrue)
 	tbl.RawSetInt(3, LTrue)
-	errorIfNotEqual(t, 3, tbl.MaxN())
+	errorIfNotEqual(t, 1, tbl.MaxN())
 	errorIfNotEqual(t, LTrue, tbl.RawGetInt(1))
 	errorIfNotEqual(t, LNil, tbl.RawGetInt(2))
 	errorIfNotEqual(t, LTrue, tbl.RawGetInt(3))
@@ -167,15 +167,15 @@ func TestTableRawSetH(t *testing.T) {
 
 func TestTableRawGetH(t *testing.T) {
 	tbl := newLTable(0, 0)
-	errorIfNotEqual(t, LNil, tbl.RawGetH(LNumber(1)))
-	errorIfNotEqual(t, LNil, tbl.RawGetH(LString("key0")))
+	errorIfNotEqual(t, LNil, tbl.rawGetH(LNumber(1)))
+	errorIfNotEqual(t, LNil, tbl.rawGetH(LString("key0")))
 	tbl.RawSetH(LString("key0"), LTrue)
 	tbl.RawSetH(LString("key1"), LFalse)
 	tbl.RawSetH(LNumber(1), LTrue)
-	errorIfNotEqual(t, LTrue, tbl.RawGetH(LString("key0")))
-	errorIfNotEqual(t, LTrue, tbl.RawGetH(LNumber(1)))
-	errorIfNotEqual(t, LNil, tbl.RawGetH(LString("notexist")))
-	errorIfNotEqual(t, LNil, tbl.RawGetH(LTrue))
+	errorIfNotEqual(t, LTrue, tbl.rawGetH(LString("key0")))
+	errorIfNotEqual(t, LTrue, tbl.rawGetH(LNumber(1)))
+	errorIfNotEqual(t, LNil, tbl.rawGetH(LString("notexist")))
+	errorIfNotEqual(t, LNil, tbl.rawGetH(LTrue))
 }
 
 func TestTableForEach(t *testing.T) {

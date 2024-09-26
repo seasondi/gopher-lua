@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"container/list"
 	"context"
 	"fmt"
 	"os"
@@ -143,11 +144,12 @@ func (nm LNumber) Format(f fmt.State, c rune) {
 type LTable struct {
 	Metatable LValue
 
-	array   []LValue
-	dict    map[LValue]LValue
-	strdict map[string]LValue
-	keys    []LValue
-	k2i     map[LValue]int
+	array              []LValue
+	arrayContinuousLen int
+
+	dict map[LValue]LValue
+	keys *list.List
+	k2l  map[LValue]*list.Element
 }
 
 func (tb *LTable) String() string   { return fmt.Sprintf("table: %p", tb) }
