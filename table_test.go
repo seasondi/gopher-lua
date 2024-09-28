@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -230,4 +231,28 @@ func TestTableForEach(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestTableNext(t *testing.T) {
+	tbl := newLTable(0, 0)
+	tbl.RawSetInt(1, LNumber(1))
+	tbl.RawSetInt(2, LNumber(2))
+	tbl.RawSetInt(3, LNumber(3))
+	tbl.RawSetInt(4, LNil)
+	tbl.RawSetInt(5, LNumber(5))
+
+	tbl.RawSetInt(6, LNumber(6))
+	tbl.RawSetInt(10, LNumber(10))
+
+	tbl.RawSetInt(-1, LNumber(-1))
+	tbl.RawSetH(LString("a"), LString("a"))
+	tbl.RawSetH(LString("b"), LString("b"))
+	tbl.RawSetH(LString("c"), LString("c"))
+
+	tbl.RawSetH(LTrue, LString("true"))
+	tbl.RawSetH(LFalse, LString("false"))
+
+	for k, v := tbl.Next(LNil); k != LNil; k, v = tbl.Next(k) {
+		fmt.Println(k, "=> ", v)
+	}
 }

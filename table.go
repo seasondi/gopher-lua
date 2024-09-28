@@ -69,6 +69,9 @@ func (tb *LTable) Append(value LValue) {
 	}
 	if len(tb.array) == 0 || tb.array[len(tb.array)-1] != LNil {
 		tb.array = append(tb.array, value)
+		if len(tb.array) == tb.arrayContinuousLen+1 {
+			tb.arrayContinuousLen += 1
+		}
 	} else {
 		i := len(tb.array) - 2
 		for ; i >= 0; i-- {
@@ -77,6 +80,9 @@ func (tb *LTable) Append(value LValue) {
 			}
 		}
 		tb.array[i+1] = value
+		if i+1 == tb.arrayContinuousLen {
+			tb.arrayContinuousLen += 1
+		}
 	}
 }
 
@@ -86,14 +92,16 @@ func (tb *LTable) Insert(i int, value LValue) {
 		tb.RawSetInt(i, value)
 		return
 	}
-	if i <= 0 {
-		tb.RawSetH(LNumber(i), value)
-		return
-	}
 	i -= 1
 	tb.array = append(tb.array, LNil)
 	copy(tb.array[i+1:], tb.array[i:])
 	tb.array[i] = value
+	for idx := tb.arrayContinuousLen; idx < len(tb.array); idx++ {
+		if tb.array[idx] == LNil {
+			break
+		}
+		tb.arrayContinuousLen += 1
+	}
 }
 
 // MaxN returns a maximum number key that nil value does not exist before it.
@@ -117,18 +125,17 @@ func (tb *LTable) Remove(pos int) LValue {
 	}
 	i := pos - 1
 	oldval := LNil
-	switch {
-	case i >= larray || i < 0:
-		// nothing to do
-	case i == larray-1:
-		oldval = tb.array[larray-1]
-		tb.array = tb.array[:larray-1]
-	default:
-		oldval = tb.array[i]
-		copy(tb.array[i:], tb.array[i+1:])
-		tb.array[larray-1] = nil
-		tb.array = tb.array[:larray-1]
+	if i < 0 {
+		i = larray - 1
+	} else if i > larray-1 {
+		return oldval
 	}
+	oldval = tb.array[i]
+	tb.array[i] = LNil
+	if pos <= tb.arrayContinuousLen {
+		tb.arrayContinuousLen = i
+	}
+
 	return oldval
 }
 
@@ -151,9 +158,12 @@ func (tb *LTable) RawSetInt(key int, value LValue) {
 	}
 
 	if value == LNil {
-		if tb.array != nil && key <= len(tb.array) {
+		if key <= len(tb.array) {
 			if v := tb.array[key-1]; v != LNil {
 				tb.array[key-1] = value
+				if key <= tb.arrayContinuousLen {
+					tb.arrayContinuousLen = key - 1
+				}
 				return
 			}
 		}
@@ -164,11 +174,6 @@ func (tb *LTable) RawSetInt(key int, value LValue) {
 	if !tb.canPutInArray(key) {
 		tb.RawSetH(LNumber(key), value)
 		return
-	}
-
-	if tb.array == nil {
-		tb.array = make([]LValue, 0)
-		tb.arrayContinuousLen = 0
 	}
 
 	alen := len(tb.array)
@@ -185,16 +190,24 @@ func (tb *LTable) RawSetInt(key int, value LValue) {
 			tb.removeFromHash(LNumber(key))
 		}
 	}
-	tb.array = append(tb.array, value)
+	if key < alen {
+		tb.array[key-1] = value
+	} else {
+		tb.array = append(tb.array, value)
+	}
 	rightCount, next := 0, key
 	for {
 		next += 1
-		if v, find := tb.dict[LNumber(next)]; find {
-			tb.array = append(tb.array, v)
-			tb.removeFromHash(LNumber(next))
-			rightCount += 1
+		if next > len(tb.array) || tb.array[next-1] == LNil {
+			if v, find := tb.dict[LNumber(next)]; find {
+				tb.array = append(tb.array, v)
+				tb.removeFromHash(LNumber(next))
+				rightCount += 1
+			} else {
+				break
+			}
 		} else {
-			break
+			rightCount += 1
 		}
 	}
 	tb.arrayContinuousLen = key + rightCount
@@ -262,50 +275,90 @@ func (tb *LTable) ForEach(cb func(LValue, LValue)) {
 
 // This function is equivalent to lua_next ( http://www.lua.org/manual/5.1/manual.html#lua_next ).
 func (tb *LTable) Next(key LValue) (LValue, LValue) {
-	if key == LNil {
-		key = LNumber(0)
-	}
 
-	if k, ok := key.(LNumber); ok && isInteger(k) && k >= 0 {
-		idx := int(k)
+	getNextInArray := func(idx int) (LValue, LValue) {
 		for ; idx < len(tb.array); idx++ {
 			if v := tb.array[idx]; v != LNil {
 				return LNumber(idx + 1), v
 			}
 		}
-		if idx == len(tb.array) {
-			if len(tb.dict) == 0 {
+		return LNil, LNil
+	}
+
+	getNextInHash := func(key LValue) (LValue, LValue) {
+		nextKey := LNil
+		if k, ok := tb.k2l[key]; !ok {
+			if el := tb.keys.Front(); el != nil {
+				nextKey = el.Value.(LValue)
+			}
+		} else {
+			if el := k.Next(); el != nil {
+				nextKey = el.Value.(LValue)
+			}
+		}
+
+		if nextKey != LNil {
+			for e := tb.k2l[nextKey]; e != nil; e = e.Next() {
+				k := e.Value.(LValue)
+				if v := tb.rawGetH(k); v != LNil {
+					return k, v
+				}
+			}
+		}
+		return LNil, LNil
+	}
+
+	intKeyExist := func(key int) bool {
+		if key > 0 {
+			if key <= len(tb.array) && tb.array[key-1] != LNil {
+				return true
+			}
+		}
+		if _, find := tb.k2l[LNumber(key)]; find {
+			return true
+		}
+		return false
+	}
+
+	if key == LNil {
+		if nk, nv := getNextInArray(0); nk != LNil {
+			return nk, nv
+		}
+		return getNextInHash(key)
+	}
+
+	isInt := false
+	intKey := 0
+	if k, ok := key.(LNumber); ok && isInteger(k) {
+		isInt = true
+		intKey = int(k)
+	}
+
+	if !isInt {
+		return getNextInHash(key)
+	} else {
+		if intKey <= 0 {
+			if intKeyExist(intKey) {
+				return getNextInHash(key)
+			} else {
 				return LNil, LNil
 			}
-			key = tb.keys.Front().Value.(LValue)
-			if v := tb.rawGetH(key); v != LNil {
-				return key, v
+		}
+
+		if intKey < tb.arrayContinuousLen {
+			return LNumber(intKey + 1), tb.array[intKey]
+		}
+
+		if nk, nv := getNextInArray(intKey); nk != LNil {
+			return nk, nv
+		} else {
+			if intKeyExist(intKey) {
+				return getNextInHash(key)
+			} else {
+				return LNil, LNil
 			}
 		}
 	}
-
-	var nextKey LValue
-	if k, ok := tb.k2l[key]; !ok {
-		//遍历过程中,key已删除
-		if el := tb.keys.Front(); el != nil {
-			nextKey = el.Value.(LValue)
-		}
-	} else {
-		if el := k.Next(); el != nil {
-			nextKey = el.Value.(LValue)
-		}
-	}
-
-	if nextKey != nil {
-		for e := tb.k2l[nextKey]; e != nil; e = e.Next() {
-			k := e.Value.(LValue)
-			if v := tb.rawGetH(k); v != LNil {
-				return k, v
-			}
-		}
-	}
-
-	return LNil, LNil
 }
 
 func (tb *LTable) addToHash(key, value LValue) {
@@ -323,7 +376,7 @@ func (tb *LTable) removeFromHash(key LValue) {
 }
 
 func (tb *LTable) canPutInArray(key int) bool {
-	if tb.array == nil {
+	if len(tb.array) == 0 {
 		return key == 1
 	}
 

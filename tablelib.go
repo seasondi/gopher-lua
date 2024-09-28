@@ -44,7 +44,11 @@ func tableRemove(L *LState) int {
 	if L.GetTop() == 1 {
 		L.Push(tbl.Remove(-1))
 	} else {
-		L.Push(tbl.Remove(L.CheckInt(2)))
+		idx := L.CheckInt(2)
+		if idx <= 0 {
+			L.ArgError(2, "position out of bounds")
+		}
+		L.Push(tbl.Remove(idx))
 	}
 	return 1
 }
@@ -93,7 +97,11 @@ func tableInsert(L *LState) int {
 		tbl.Append(L.Get(2))
 		return 0
 	}
-	tbl.Insert(int(L.CheckInt(2)), L.CheckAny(3))
+	idx := L.CheckInt(2)
+	if idx <= 0 {
+		L.ArgError(2, "position out of bounds")
+	}
+	tbl.Insert(idx, L.CheckAny(3))
 	return 0
 }
 
